@@ -25,18 +25,18 @@ import (
 
 	"github.com/gravitational/teleport"
 	"github.com/gravitational/teleport/lib/backend"
-	"github.com/gravitational/teleport/lib/defaults"
 
 	"github.com/coreos/etcd/client"
-	"github.com/coreos/etcd/pkg/transport"
 	"github.com/gravitational/trace"
 	"golang.org/x/net/context"
 )
 
+// Option is a functional option parameter that can be passed to the backend
+type Option func(b *bk) error
+
 type bk struct {
 	nodes []string
 
-	cfg     Config
 	etcdKey string
 	client  client.Client
 	api     client.KeysAPI
@@ -45,19 +45,30 @@ type bk struct {
 }
 
 // New returns new instance of Etcd-powered backend
-func New(cfg Config) (backend.Backend, error) {
-	if err := cfg.Check(); err != nil {
-		return nil, trace.Wrap(err)
+func New(nodes []string, key string, options ...Option) (backend.Backend, error) {
+	if len(nodes) == 0 {
+		return nil, trace.Wrap(
+			teleport.BadParameter("nodes",
+				"empty list of etcd nodes, supply at least one node"))
+	}
+	if len(key) == 0 {
+		return nil, trace.Wrap(
+			teleport.BadParameter("key",
+				"provide key for this backend"))
 	}
 	b := &bk{
-		cfg:     cfg,
-		nodes:   cfg.Nodes,
-		etcdKey: cfg.Key,
+		nodes:   nodes,
+		etcdKey: key,
 		cancelC: make(chan bool, 1),
 		stopC:   make(chan bool, 1),
 	}
+	for _, o := range options {
+		if err := o(b); err != nil {
+			return nil, err
+		}
+	}
 	if err := b.reconnect(); err != nil {
-		return nil, trace.Wrap(err)
+		return nil, err
 	}
 	return b, nil
 }
@@ -71,19 +82,10 @@ func (b *bk) key(keys ...string) string {
 }
 
 func (b *bk) reconnect() error {
-	tlsInfo := transport.TLSInfo{
-		CAFile:   b.cfg.TLSCAFile,
-		CertFile: b.cfg.TLSCertFile,
-		KeyFile:  b.cfg.TLSKeyFile,
-	}
-	tr, err := transport.NewTransport(tlsInfo, defaults.DefaultDialTimeout)
-	if err != nil {
-		return trace.Wrap(err)
-	}
 	clt, err := client.New(client.Config{
 		Endpoints:               b.nodes,
-		Transport:               tr,
-		HeaderTimeoutPerRequest: defaults.DefaultReadHeadersTimeout,
+		Transport:               client.DefaultTransport,
+		HeaderTimeoutPerRequest: time.Second,
 	})
 	if err != nil {
 		return trace.Wrap(err)

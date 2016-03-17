@@ -1,8 +1,5 @@
 FROM debian:jessie
 
-ARG UID
-ARG GID
-
 ENV DEBIAN_FRONTEND noninteractive
 
 ADD locale.gen /etc/locale.gen
@@ -43,7 +40,7 @@ RUN (mkdir -p /gopath/src/github.com/gravitational/teleport;\
      chmod a+w /gopath;\
      chmod a+w /var/lib)
 
-RUN groupadd jenkins --gid=$GID && useradd jenkins --uid=$UID --gid=$GID --create-home --shell=/bin/sh
+RUN groupadd jenkins --gid=995 && useradd jenkins --uid=997 --gid=995 --create-home --shell=/bin/sh
 RUN (mkdir -p /var/lib/teleport && chown -R jenkins /var/lib/teleport)
 
 ENV LANGUAGE="en_US.UTF-8" \
